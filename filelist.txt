@@ -1,0 +1,27 @@
+#mis/mtrxo.f:      COMMON /ZZZZZZ/ NSTRN
+#mis/dumod2.f:      COMMON /ZZZZZZ/ X(1)
+#mis/saxif2.f:      COMMON /ZZZZZZ/ ZZ(1)
+#mis/mmarc3.f:      COMMON  /ZZZZZZ/ RXL(1)
+#mis/gencos.f:      COMMON /ZZZZZZ/ Z(1)
+#mis/flbprt.f:      COMMON /ZZZZZZ/ Z(1)
+#mis/tria3d.f:      COMMON /ZZZZZZ/  Z(1)
+#mis/aspro.f:      COMMON /ZZZZZZ/ SBD(2)
+#mis/viscd.f:      INCLUDE '../params.inc'
+#mis/xfldef.f:      INCLUDE '../params.inc'
+#mis/xsosgn.f:      INCLUDE '../params.in
+#bd/gp3bd.f: 
+#bd/gptabd.f:  
+#mis/dsmg2.f
+#mds/exfort.f
+#mds/exfowr.f
+#mds/fbsv.f
+#mds/filpos.f
+#mds/geturn.f
+#mds/gnfiat.f
+#mds/wrtfmt.f
+#mds/xsem00.f
+#mis/givens.f
+bd/plotbd.f
+bd/semdbd.f
+bd/ferfbd.f
+mds/bpack.f

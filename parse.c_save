@@ -1,0 +1,304 @@
+/*
+ * parse.c
+ *
+ *  Created on: Jun 1, 2019
+ *      Author: dad
+ */
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <errno.h>
+#include "fixnastran.h"
+
+
+extern VARDEF vardatadef;		// default values for a newly found variable (befor being filled in by correct data)
+														// note that we are assuming that NULL == 0 here (not always true on all systems, cf, msvc)
+
+extern PVARDATA vardata;		// pointer to the variable data structure
+extern int vardatasize;			// current number of elements in the vardata array 0-. not defined yet
+
+extern VARTREEDEF vartreedef;	// pointer to the default valuse of a parse tree node
+
+extern PVARTREE vartree;		// pointer to the parse tree structure
+
+extern char * parsethis;		// pointer to the stree to parse
+extern char * nextparsechar;
+
+extern char * topnodelabel;		// what we will put in the name field for the top node
+// char * topnodelabel;		// what we will put in the name field for the top node
+
+int labelleaf( PVARTREE vartree, char * label);
+PVARTREE AddTreeBranch( PVARTREE vartree);
+/* arith0.c: simple parser -- no output
+ * grammar:
+ *   P ---> E '#'				/
+ *   E ---> T {('+'|'-') T}		,
+ *   T ---> S {('*'|'/') S}		V(
+ *   S ---> F '^' S | F
+ *   F ---> char | '(' E ')'
+ */
+
+char next;
+void E(void);
+void T(void);
+void S(void);
+void F(void);
+void error(int);
+void scan(void);
+void enter(char);
+void leave(char);
+void spaces(int);
+void clearstr();
+void pushchr( char mychar);
+void printvar();
+PVARTREE getparentof(PVARTREE currentbranch);
+void pushbranch();
+void popbranch();
+char * whichbranch( PVARTREE thetree );
+
+int level = 0;
+
+char EOL = '/';
+int iprint = 1;
+char datastr[BUFFLEN];
+int datastrloc;
+PVARTREE currentbranch;
+PVARTREE parent;
+PVARTREE topbranch;
+PVARTREE newbranch;
+int slashlevel;
+
+int parsecommon(void)
+{
+	int parsethislen;
+
+   newbranch = parent = NULL;
+   slashlevel = 0;
+   if ( ( currentbranch = topbranch = vartree = AddTreeBranch(parent) ) == NULL ) return 1;
+   if ( labelleaf( currentbranch, topnodelabel ) ) return 2;
+   nextparsechar = parsethis;
+   parsethislen = strlen(parsethis);
+   clearstr();
+   level = 0;
+   scan();
+   E();
+   printvar();
+   if ( whichbranch(currentbranch) != NULL ) printf (" currentbranch is %s\n",whichbranch(currentbranch));
+   if (next != EOL) {
+	   fprintf(stderr,"Unsuccessful parse, next = %c\n",next);
+	   return 1;
+   }
+   else {
+	   if ( iprint ) return 0;
+	   printf("Successful parse\n");
+   }
+   return 0;
+}
+
+void E(void)
+{
+   enter('E');
+   T();
+   while (next == ','  || next == '(') {
+	   printvar();
+      scan();
+      T();
+   }
+   leave('E');
+}
+
+void T(void)
+{
+   enter('T');
+   S();
+   while ((next) == '*' ) {
+ //     scan();
+ //     S();
+   }
+   leave('T');
+}
+void S(void)
+{
+   enter('S');
+   F();
+   if (next == '(') {
+	   printvar();
+	   pushbranch();
+ //     scan();
+ //     S();
+	   E();
+   }
+   leave('S');
+}
+void F(void)
+{
+   enter('F');
+   if (isalpha(next)  || isdigit(next)) {
+      while ( isalpha(next) || isdigit(next) ) {
+    	  pushchr(next);
+    	  scan();
+      }
+   }
+   else if (next == '(') {
+	   printvar();
+	   pushbranch();
+      scan();
+      E();
+      if (next == ')') {
+    	  printvar();
+    	  popbranch();
+    	  scan();
+      }
+      else error(2);
+   }
+   else {
+      error(3);
+   }
+   leave('F');
+}
+void scan(void)
+{
+   while ( isspace( next = *(nextparsechar++) ) )
+      ;
+}
+void error(int n)
+{
+   printf("\n*** ERROR in parser: %i, next = %c \n", n, next);
+   exit(1);
+}
+void enter(char name)
+{
+   if ( iprint ) return;
+   spaces(level++);
+   printf("+-%c: Enter, \t", name);
+   printf("Next == %c\n", next);
+}
+void leave(char name)
+{
+   if ( iprint ) return;
+   spaces(--level);
+   printf("+-%c: Leave, \t", name);
+   printf("Next == %c\n", next);
+}
+
+void spaces(int local_level)
+{
+   if ( iprint ) return;
+   while (local_level-- > 0)
+      printf("| ");
+}
+
+int labelleaf( PVARTREE vartree, char * label){
+	char * mylabel;
+	int lablen = strlen(label);
+	PVARDATA  mydata;
+	if ( !lablen ) {
+		printf("labelleaf called with zero length label\n");
+		return 1;
+	}
+	mydata = vartree->data;
+	if ( mydata == NULL ) {
+		if ( ( mydata = vartree->data =  (PVARDATA)malloc(sizeof(vardatadef)) ) == NULL ){
+	//		if ( ( mydata = vartree->data =  (PVARDATA)malloc(sizeof(vardatadef)) ) == NULL ){
+			printf("malloc failed in labelleaf adding data struct\n");
+			return 2;
+		}
+		*mydata = vardatadef;
+	}
+	if ( ( mylabel =  (char *)malloc(lablen + 1) ) == NULL ){
+		printf("malloc failed in labelleaf adding label string\n");
+		return 3;
+	}
+	strcpy(mylabel,label);
+	if ( mydata->name != NULL ) free(mydata->name);
+	mydata->name = mylabel;
+
+	return 0;
+}
+
+PVARTREE AddTreeBranch( PVARTREE vartree){
+	PVARTREE newbranch;
+	PPVARTREE branchlist;
+
+	if ( ( newbranch = (PVARTREE)malloc(sizeof(vartreedef)) ) == NULL ) {
+		printf("malloc failed in AddTreeBranch\n");
+		return(NULL);
+	}
+	*newbranch = vartreedef;
+	newbranch->parent = vartree;
+	if ( vartree != NULL ) {
+		vartree->numbranches++;
+		if ( vartree->numbranches > vartree->numbraalloc ) {
+			vartree->branch = (PPVARTREE )realloc( vartree->branch , sizeof(PVARTREE) * (vartree->numbraalloc+100) );
+			vartree->numbraalloc+=100;
+		}
+		branchlist = vartree->branch;
+		*(branchlist+vartree->numbranches-1) = newbranch;
+	}
+
+	return(newbranch);
+}
+
+char * whichbranch( PVARTREE thetree ) {
+	PVARTREE mytree;
+	PVARDATA  mydata;
+	char * mylabel;
+
+	if ( thetree == NULL ) return (NULL);
+	mytree = thetree;
+	if ( mytree->data == NULL ) return (NULL);
+	mydata = mytree->data;
+	if ( mydata->name == NULL ) return (NULL);
+	mylabel = mydata->name;
+
+	return (mylabel);
+}
+
+
+void clearstr() {
+//	datastr[0] = '\000';
+	datastrloc = 0;
+	return;
+}
+
+void pushchr( char mychar) {
+	datastr[datastrloc] = mychar;
+	datastrloc++;
+	return;
+}
+
+void printvar() {
+	if ( ! datastrloc ) return;
+	datastr[datastrloc] = '\000';
+	if ( ( newbranch = AddTreeBranch(currentbranch) ) == NULL ) {
+		printf("error adding tree in printvar\n");
+		exit(1);
+	}
+	if ( labelleaf( newbranch, datastr ) ) {
+		printf("error adding leaf label in printvar\n");
+		exit(1);
+	}
+	printf(" var = %s\n",datastr);
+	clearstr();
+	return;
+}
+
+void pushbranch() {
+	currentbranch = newbranch;
+	parent = getparentof(currentbranch);
+	return;
+}
+
+void popbranch() {
+	currentbranch = parent;
+	parent = getparentof(currentbranch);
+	return;
+}
+
+PVARTREE getparentof(PVARTREE currentbranch) {
+	PVARTREE newparent;
+	newparent = currentbranch->parent;
+	return(newparent);
+}
