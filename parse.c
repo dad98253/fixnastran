@@ -12,6 +12,8 @@
 #include <errno.h>
 #include "fixnastran.h"
 
+#define COMMON 3
+#define IMPLICIT 4
 extern char *statementkeywords[];
 
 extern VARDEF vardatadef;		// default values for a newly found variable (befor being filled in by correct data)
@@ -66,12 +68,13 @@ int DeleteVarData( PVARDATA mydata);
 int PrintVarData( PVARDATA mydata);
 int printParseNode(PVARTREE mynode, int verbose);
 PVARTREE GetBranch( PVARTREE vartree, int index);
+extern int parsedeclare(int cardtype);
 
 
 int level = 0;
 
 char EOL = '/';
-int iprint = 1;
+int iprint = 0;
 char datastr[BUFFLEN];
 int datastrloc;
 PVARTREE currentbranch;
@@ -80,14 +83,21 @@ PVARTREE topbranch;
 PVARTREE newbranch;
 int slashlevel;
 int parsethislen;
+int requiredigit;
 
-int parsecommon(void)
+int parsecommon(int cardtype)
 {
 
    newbranch = parent = NULL;
    slashlevel = 0;
+   requiredigit = 0;
    if ( ( currentbranch = topbranch = vartree = AddTreeBranch(parent) ) == NULL ) return 1;
    if ( labelleaf( currentbranch, topnodelabel ) ) return 2;
+   if ( cardtype != COMMON && cardtype != IMPLICIT) {
+//	   if ( ( currentbranch = newbranch = AddTreeBranch(topbranch) ) == NULL ) return 3;
+//	   if ( labelleaf( currentbranch, statementkeywords[cardtype] ) ) return 4;
+	   return (parsedeclare(cardtype));
+   }
    nextparsechar = parsethis;
    parsethislen = strlen(parsethis);
    clearstr();
@@ -98,7 +108,7 @@ int parsecommon(void)
    pushbranch();
    if (next != EOL) {
 	   fprintf(stderr,"Unsuccessful parse, next = %c\n",next);
-	   return 1;
+	   return 5;
    }
    else {
 	   if (strcmp ( GetBranchName(currentbranch) , "COMMON" ) == 0 ) {
@@ -112,7 +122,7 @@ int parsecommon(void)
 			     pushbranch(); // should point us back to the node with the name of the common block
 			     if (next != EOL) {
 			  	   fprintf(stderr,"Unsuccessful parse, next = %c\n",next);
-			  	   return 1;
+			  	   return 6;
 			     }
 			     // get all the common block variables
 			   	 clearstr();
@@ -124,7 +134,7 @@ int parsecommon(void)
 //			     popbranch();	// should pop us back to the node that is labeled "COMMON"
 			     if (next != EOL) {
 			  	   fprintf(stderr,"Unsuccessful parse, next = %c\n",next);
-			  	   return 1;
+			  	   return 7;
 			     }
 		   }
 	   }
@@ -166,7 +176,8 @@ void S(void)
 {
    enter('S');
    F();
-   if (next == '(') {
+   if (next == '(' || next == '*' ) {
+	   if ( next == '*' )  requiredigit = 1;
 	   printvar();
 	   pushbranch();
  //     scan();
@@ -179,17 +190,26 @@ void F(void)
 {
    enter('F');
    if (isalpha(next)  || isdigit(next)) {
-      while ( isalpha(next) || isdigit(next) ) {
-    	  pushchr(next);
-    	  scan();
-      }
+	  if ( requiredigit ) {							// start *# processing
+		  while ( isdigit(next) ) {
+		      	  pushchr(next);
+		      	  scan();
+		  }
+		  requiredigit = 0;
+		  printvar();
+		  popbranch();
+	  } 												// end *# processing
+	  while ( isalpha(next) || isdigit(next) ) {
+		  pushchr(next);
+		  scan();
+	  }
    }
-   else if (next == '(') {
+   else if (next == '(' ) {		/////
 	   printvar();
 	   pushbranch();
       scan();
       E();
-      if (next == ')') {
+      if (next == ')' ) {		///////////
     	  printvar();
     	  popbranch();
     	  scan();

@@ -18,7 +18,7 @@ int savecommon( char * substr, int substrlen);
 int unloadcommons();
 int DeleteAllSaves();
 int parsecards();
-int saveline (char * linein , int icontinue);
+int saveline (char * linein , int icontinue, int thiscard);
 void unloadlines();
 void sqzline ( char * linein );
 int getcardtype( char * x, int j);
@@ -34,7 +34,7 @@ int deletecards( int cardnumber, int numbertodelete );
 int addcardbefore( char * ourline, int cardnumber );
 int addonecard( char*z , int tempcardnum );
 int writedeck();
-extern int parsecommon(void);
+extern int parsecommon(int cardtype);
 extern int dumpparsetree(PVARTREE vartree);
 extern int printParseNode(PVARTREE mynode, int verbose);
 extern int NumChildBranch( PVARTREE thetree );
@@ -48,6 +48,10 @@ int setimplicits(int mylinenum);
 int paresme( char * parsethis , int i , char * mytopnodelabel, int cardtype);
 int loaddatatypes ();
 int setvardata(int mylinenum, int cardtp );
+int deletecards4line(int theline );
+int CheckCardNumber( int cardtocheck , int cardtodelete, int numbertodelete );
+int CheckCardNumberAdd( int cardtocheck , int cardtoadd, int numtoadd);
+int isprogtype( int cardtype );
 
 VARDEF vardatadef = {NULL,NULL,NULL,0,0,4,0,0,0,0};		// default values for a newly found variable (befor being
                                                         // filled in by correct data) note that we are assuming that
@@ -69,6 +73,7 @@ char filename[BUFFLEN];
 
 int cardnumber[MAXROUTINESIZE];
 unsigned char continues[MAXROUTINESIZE];
+int * ContinueLines[MAXROUTINESIZE];
 unsigned char cardtype[MAXROUTINESIZE];
 char *cards[MAXROUTINESIZE];
 char *lines[MAXROUTINESIZE];
@@ -164,7 +169,7 @@ int main()
     nextparsechar = parsethis = testvect;
     while ( *(nextparsechar) != '\000' ) {
     	printf(" at character # %u\n", (unsigned int)(nextparsechar-testvect));
-    	if ( (i = parsecommon()) ) {
+    	if ( (i = parsecommon(COMMON)) ) {
     		printf("parsecommon failed, returned %i\n",i);
     	}
     	dumpparsetree(vartree);
@@ -205,6 +210,7 @@ int main()
         szret = strchr ( filestr, '\n' );
         if ( szret == NULL ) {
         	printf(" %i [%li] : not found %s\n",i+1,strlen(filestr),filestr);
+        	continue;
         }else{
         	if (filestr[0] == '#' ){
         	   	printf(" %i [%li] : commented out... skipping %s\n",i+1,strlen(filestr),filestr);
@@ -253,15 +259,16 @@ int main()
             }
         }
         printf(" %i cards loaded\n",numcards);
-//    	unloadcards(0);										//
+//        if ( unloadcards(0) ) return(13);							//	debug print
         if ( parsecards() ) return 7;
         if ( loaddatatypes () ) return 11;
         ourguy = 0;
         if ( ( ourguy = FindOurCommonBlock() ) ) {
         	int sancheck = DoSanityCheck( ourguy );
         	if ( sancheck != 0 && sancheck != 7 ) return 8;
+//        	if ( unloadcards(0) ) return(14);						//	debug print
         	if ( FixOurCommon ( ourguy ) ) return 9;
-//        	unloadcards(0);									//
+//        	if ( unloadcards(0) ) return(15);						//	debug print
         	if ( hasinclude ) {
         		if ( DeleteOurInclude() ) return(10);
         	}
@@ -371,7 +378,7 @@ int parsecards() {
 			}
 		}
 		if ( (strncmp( (const char *)x, "     ", 5 ) == 0) && (x[5] != ' ') ) {  // continuation card
-			if ( saveline(x,1) ) return (1);
+			if ( saveline(x,1,i) ) return (1);
 			continue;
 		}
 		if ( numlines ) sqzline(lines[numlines-1]);
@@ -443,19 +450,23 @@ int getcardtype( char * x , int j) {
 			}
 			cardtype[numlines] = i;
 			continues[numlines] = 0;
+			if ( ContinueLines[numlines] != NULL ) free(ContinueLines[numlines]);
+			ContinueLines[numlines] = NULL;
 			cardnumber[numlines] = j;
-			if ( saveline(x,0) ) return (BAD);
+			if ( saveline(x,0,0) ) return (BAD);
 			return (i);
 		}
 	}
 	cardtype[numlines] = OTHER;
 	continues[numlines] = 0;
+	if ( ContinueLines[numlines] != NULL ) free(ContinueLines[numlines]);
+	ContinueLines[numlines] = NULL;
 	cardnumber[numlines] = j;
-	if ( saveline(x,0) ) return (BAD);
+	if ( saveline(x,0,0) ) return (BAD);
 	return (OTHER);
 }
 
-int saveline(char * linein , int icontinue) {
+int saveline(char * linein , int icontinue , int thiscard) {
 	char *x,*y;
 	size_t isize, addsize;
 	if ( icontinue ) {
@@ -463,6 +474,15 @@ int saveline(char * linein , int icontinue) {
 			printf("bad saveline call : %s\n",linein);
 			return 1;
 		}
+		if ( ContinueLines[numlines-1] == NULL ) {
+			ContinueLines[numlines-1] = (int *)malloc(40*sizeof(int));
+			if ( ContinueLines[numlines-1] == NULL ) {
+				fprintf(stderr,"unable to allocate ContinueLines for %s\n",linein);
+				return (2);
+			}
+		}
+		int * contintemp = ContinueLines[numlines-1];
+		*(contintemp+continues[numlines-1]) = thiscard;
 		continues[numlines-1]++;
 		y = lines[numlines-1];
 		isize = strlen( y );
@@ -470,7 +490,7 @@ int saveline(char * linein , int icontinue) {
 		x = (char*)realloc(y,isize+addsize+1);
 		if ( x == NULL ) {
 			printf(" realloc failed at line %i\n",numlines);
-			return (1);
+			return (3);
 		}
 		strcat(x,(char*)(linein+6));
 		lines[numlines-1] = x;
@@ -478,7 +498,7 @@ int saveline(char * linein , int icontinue) {
 		x = (char*)malloc(strlen(linein)+1);
 		if ( x == NULL ) {
 			printf(" malloc failed at line %i\n",numlines);
-			return (1);
+			return (4);
 		}
 		strcpy(x,linein);
 		lines[numlines] = x;
@@ -497,7 +517,11 @@ void unloadlines() {
 		} else {
 			if ( printflag ) {
 				printf("unloading line %6.6i : %-100.100s... type %s",i,x,statementkeywords[cardtype[i]]);
-				if ( continues[i] != 0 ) printf ("+%i", continues[i]);
+				if ( continues[i] != 0 ) {
+					printf ("+%i", continues[i]);
+					free(ContinueLines[i]);
+					ContinueLines[i] = NULL;
+				}
 				if ( cardnumber[i] < firstexe ) printf( "x");
 				if ( strlen(statementkeywords[cardtype[i]]) < 8 ) printf("\t");
 				printf("\t-> card %i",cardnumber[i]);
@@ -715,7 +739,7 @@ int FixOurCommon( int ourguy ) {
 		if ( paresme( parsethis , ourguy , topnodelabel, COMMON) ) return (11);
 /*
 		int iret;
-		if ( (iret = parsecommon()) ) {
+		if ( (iret = parsecommon(COMMON)) ) {
 			printf("parsecommon failed, returned %i\n",iret);
 			if ( savebadboys ) {
 				fprintf(badboys," nasty COMMON block parse failed in %s\n",filename);
@@ -780,7 +804,7 @@ int FixOurCommon( int ourguy ) {
 		// delete the card(s) containg the old common block declaration
 		int ourguycardnumber;		// save the card number where he used to start
 		ourguycardnumber = cardnumber[ourguy];
-		if ( deletecards(cardnumber[ourguy],(int)(continues[ourguy])+1) ) return(14);
+		if ( deletecards4line( ourguy ) ) return(14);
 		// reuse the parsethis array to assemble our new cards
 		PVARTREE CommonBlock;
 		PVARTREE Variable;
@@ -842,7 +866,7 @@ int FixOurCommon( int ourguy ) {
 					if ( j+1 != numvars ) strcat ( parsethis , "," );
 				}  // whole line is complete... now see if its too long..
 				if ( strlen(parsethis) < 72 ) {
-					printf(" adding \"%s\" to location %i\n",parsethis,cardnumber[ourguy]+NumCardsAdded);
+//					printf(" adding \"%s\" to location %i\n",parsethis,cardnumber[ourguy]+NumCardsAdded);
 					if ( addcardbefore( parsethis, ourguycardnumber+NumCardsAdded ) ) return(6);
 					NumCardsAdded++;
 				} else {  // its too long, find a good place to break it up
@@ -855,7 +879,7 @@ int FixOurCommon( int ourguy ) {
 					while ( strlen(tmpstr) > 66) {
 						mylast = strnrchrjk(tmpstr, 72-crdstart , ',');
 						strncat(onecard, tmpstr, mylast);
-						printf(" adding \"%s\" to location %i\n",onecard,cardnumber[ourguy]+NumCardsAdded);
+//						printf(" adding \"%s\" to location %i\n",onecard,cardnumber[ourguy]+NumCardsAdded);
 						if ( addcardbefore( onecard, ourguycardnumber+NumCardsAdded ) ) return(6);
 						NumCardsAdded++;
 						tmpstr+=mylast;
@@ -864,7 +888,7 @@ int FixOurCommon( int ourguy ) {
 					}
 					if ( strlen(tmpstr) > 0 ) {
 						strncat(onecard, tmpstr, mylast);
-						printf(" adding \"%s\" to location %i\n",onecard,cardnumber[ourguy]+NumCardsAdded);
+//						printf(" adding \"%s\" to location %i\n",onecard,cardnumber[ourguy]+NumCardsAdded);
 						if ( addcardbefore( onecard, ourguycardnumber+NumCardsAdded ) ) return(6);
 						NumCardsAdded++;
 					}
@@ -934,19 +958,36 @@ int FixOurCommon( int ourguy ) {
 		lines[ourguy] = ournewline;
 		ourline = ournewline;
 		// now fix the card(s)
+		// first, save the card number because we will be adding a card back in at the same location
+		// (because when we delete the card, the reference to it in cardnumber will be changed to "-1")
+		int tempcardnum = cardnumber[ourguy];
 		// delete the card(s) containg the old common block declaration
-		if ( deletecards(cardnumber[ourguy],(int)(continues[ourguy])+1) ) return(5);
+		if ( deletecards4line( ourguy ) ) return(5);
 		// add the card back in, pretty printing as we go...
-		if ( addcardbefore( ourline, cardnumber[ourguy] ) ) return(6);
+		if ( addcardbefore( ourline, tempcardnum ) ) return(6);
 	}
 
 	return(0);  // everything ok
 }
 
+int deletecards4line(int theline ) {
+
+	if ( continues[theline] > 0 ) {
+		int * thecontins;
+		for (int i=continues[theline]-1;i>-1;i--) {
+			thecontins = ContinueLines[theline];
+			if ( deletecards(*(thecontins+i),1) ) return(1);
+		}
+	}
+	if ( deletecards(cardnumber[theline],1) ) return(2);
+
+	return 0;
+}
+
 int deletecards( int cardtodelete, int numbertodelete ) {
 
 	char * x;
-	int i;
+	int i,j;
 	if ( numcards == 0 ) {
 		printf( "deletecards called with numcards = 0");
 		return(1);
@@ -971,11 +1012,34 @@ int deletecards( int cardtodelete, int numbertodelete ) {
 	numcards-=numbertodelete;
 // repair indecies in lines
 	for ( i = 0; i<numlines; i++) {
-		if ( cardnumber[i] > (cardtodelete-1) && cardnumber[i] < (cardtodelete+numbertodelete) ) cardnumber[i] = -1;
-		if ( cardnumber[i] > cardtodelete ) cardnumber[i]-=numbertodelete;
+		cardnumber[i] = CheckCardNumber( cardnumber[i] , cardtodelete, numbertodelete );
+		if ( continues[i] != 0 ) {
+			int * contins = ContinueLines[i];
+			for ( j=0; j<continues[i]; j++) {
+				*(contins+j) = CheckCardNumber( *(contins+j) , cardtodelete, numbertodelete );
+			}
+		}
+
 	}
 	if ( firstexe > cardtodelete ) firstexe-=numbertodelete;
 	return(0);
+}
+
+int CheckCardNumber( int cardtocheck , int cardtodelete, int numbertodelete ) {
+
+	if ( cardtocheck == -1 ) return(cardtocheck);
+	if ( cardtocheck > (cardtodelete-1) && cardtocheck < (cardtodelete+numbertodelete) ) cardtocheck = -1;
+	if ( cardtocheck > cardtodelete ) cardtocheck-=numbertodelete;
+
+	return (cardtocheck);
+}
+
+int CheckCardNumberAdd( int cardtocheck , int cardtoadd, int numtoadd) {
+
+	if ( cardtocheck == -1 ) return(cardtocheck);
+	if ( cardtocheck > (cardtoadd-1) ) cardtocheck+=numtoadd;
+
+	return (cardtocheck);
 }
 
 int addcardbefore( char * ourline, int cardtoadd ) {
@@ -1043,7 +1107,13 @@ int addcardbefore( char * ourline, int cardtoadd ) {
 	if ( addonecard( y , tempcardnum ) ) return(2);
 // repair indecies in lines
 	for ( int i = 0; i<numlines; i++) {
-		if ( cardnumber[i] > (cardtoadd-1) ) cardnumber[i]+=cardout;
+		cardnumber[i] = CheckCardNumberAdd(  cardnumber[i] , cardtoadd, cardout);
+		if ( continues[i] != 0 ) {
+			int * contins = ContinueLines[i];
+			for ( int j=0; j<continues[i]; j++) {
+				*(contins+j) = CheckCardNumber( *(contins+j) , cardtoadd, cardout );
+			}
+		}
 	}
 /*
 	for ( int i = 0; i<numlines; i++) {
@@ -1264,7 +1334,7 @@ int paresme( char * parsethisin , int i , char * mytopnodelabel, int cardtype) {
 
 	topnodelabel = mytopnodelabel;
 	int iret;
-	if ( (iret = parsecommon()) ) {													// parse takes place here
+	if ( (iret = parsecommon(cardtype)) ) {													// parse takes place here
 		printf("parsecommon failed, returned %i\n",iret);
 		if ( savebadboys ) {
 			fprintf(badboys," %s parse failed with iret = %i in %s\n",mytopnodelabel,iret,filename);
@@ -1490,3 +1560,21 @@ int setvardata(int mylinenum, int cardtp ) {
 	return (0);
 }
 
+int isprogtype( int cardtype ) {
+	switch ( cardtype ) {
+				case SUBROUTINE:
+				case FUNCTION:
+				case REALFUNCTION:;
+				case INTEGERFUNCTION:
+				case DOUBLEPRECISIONFUNCTION:
+				case LOGICALFUNCTION:
+				case CHARACTERFUNCTION:
+				case COMPLEXFUNCTION:
+				case ENTRY:
+					return 1;
+					break;
+				default:
+					break;
+	}
+	return 0;
+}
