@@ -450,7 +450,9 @@ int getcardtype( char * x , int j) {
 				if ( strchr( ctem, '=' ) != NULL ) continue;
 			}
 			cardtype[numlines] = i;
-			if ( firstnondeclare  && isdeclaretype(i) ) cardtype[numlines] = OTHER;
+			if ( firstnondeclare  && isdeclaretype(i) ) cardtype[numlines] = OTHER;		// Note that this is a cheat...
+			                                                                            // (no keywords in fortran!)
+			                                                                            // It could still puke on nasty variable names!
 			continues[numlines] = 0;
 			if ( ContinueLines[numlines] != NULL ) free(ContinueLines[numlines]);
 			ContinueLines[numlines] = NULL;
