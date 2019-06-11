@@ -74,7 +74,7 @@ extern int parsedeclare(int cardtype);
 int level = 0;
 
 char EOL = '/';
-int iprint = 0;
+int iprint = 1;
 char datastr[BUFFLEN];
 int datastrloc;
 PVARTREE currentbranch;

@@ -19,9 +19,15 @@
 #mds/geturn.f
 #mds/gnfiat.f
 #mds/wrtfmt.f
-#mds/xsem00.f
+#mds/xsem00.f	//
 #mis/givens.f
-bd/plotbd.f
-bd/semdbd.f
-bd/ferfbd.f
-mds/bpack.f
+#bd/plotbd.f
+#bd/semdbd.f
+#bd/ferfbd.f
+#mds/bpack.f
+#mds/conmsg.f
+#mds/dsinqr.f
+#mds/fbsv.f
+#mds/mapfns.f
+#mds/wrtfmt.f
+mis/axloop.f

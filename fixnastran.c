@@ -52,6 +52,7 @@ int deletecards4line(int theline );
 int CheckCardNumber( int cardtocheck , int cardtodelete, int numbertodelete );
 int CheckCardNumberAdd( int cardtocheck , int cardtoadd, int numtoadd);
 int isprogtype( int cardtype );
+int isdeclaretype( int cardtype );
 
 VARDEF vardatadef = {NULL,NULL,NULL,0,0,4,0,0,0,0};		// default values for a newly found variable (befor being
                                                         // filled in by correct data) note that we are assuming that
@@ -89,7 +90,7 @@ char prefix[] ="/mnt/DataDisk2/dad/repositories/linux/nasworking/NASTRAN-95/";
 char outprefix[] ="/mnt/DataDisk2/dad/repositories/linux/nasworking/";
 char filestr[BUFFLEN];
 unsigned char printflag = '\000';
-char inputfile[] = "filelist.txt";
+char inputfile[] = "filelistfull.txt";
 char Badboys[] = "badboys.txt";
 int savebadboys = 1;
 int firstnondeclare;
@@ -449,6 +450,7 @@ int getcardtype( char * x , int j) {
 				if ( strchr( ctem, '=' ) != NULL ) continue;
 			}
 			cardtype[numlines] = i;
+			if ( firstnondeclare  && isdeclaretype(i) ) cardtype[numlines] = OTHER;
 			continues[numlines] = 0;
 			if ( ContinueLines[numlines] != NULL ) free(ContinueLines[numlines]);
 			ContinueLines[numlines] = NULL;
@@ -1575,6 +1577,23 @@ int isprogtype( int cardtype ) {
 					break;
 				default:
 					break;
+	}
+	return 0;
+}
+
+int isdeclaretype( int cardtype ) {
+	switch ( cardtype ) {
+		case DOUBLEPRECISION:
+		case LOGICAL:
+		case REAL:
+		case INTEGER:
+		case CHARACTER:
+		case COMPLEX:
+		case DIMENSION:
+			return 1;
+			break;
+		default:
+			break;
 	}
 	return 0;
 }
